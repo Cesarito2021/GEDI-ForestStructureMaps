@@ -8,6 +8,8 @@ The tool lets users pick an area of interest, choose a forest structural metric,
 
 📖 **User guide:** https://openforest4d.org/gee_gedi_forest_structure_maps/
 
+🎓 **Workshop materials:** https://cesarito2021.github.io/hands-on-workshop/gee-biomass/
+
 ---
 
 ## User Interface
