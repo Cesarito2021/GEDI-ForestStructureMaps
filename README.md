@@ -68,4 +68,4 @@ Developed at the University of Florida as part of [OpenForest4D](https://openfor
 
 ## License
 
-Add your chosen license here (e.g. MIT, Apache-2.0).
+AGPL-3.0 
