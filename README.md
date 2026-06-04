@@ -34,7 +34,67 @@ The app can map any one of the following GEDI-derived metrics:
 5. **Evaluation** — Train and test scatter plots, a variable-importance chart, and a performance table (R², RMSE, MAE, Bias, N) are produced.
 6. **Outputs** — The continuous map is rendered, and can be downloaded per grid tile (GeoTIFF), exported to Google Drive, or summarized as a metrics CSV.
 
----
+## Run from code (Earth Engine Code Editor)
+
+You can run the mapper directly from a script instead of the app interface.
+This requires the full repository to be present (`GEDI_source`, `hls_source`,
+`library`, `OF4D-GM_main`) and the `require` username to match your account.
+
+### Step 1 — Set up and run the GEDI Mapper
+
+```javascript
+// Define your Area Of Interest (a geometry, or an uploaded asset / FeatureCollection)
+var aoi = ee.Geometry.Rectangle([-85.0, 30.4, -84.6, 30.7]);   // <-- replace with your AOI
+
+// Import the GEDI Mapper library
+var library = require("users/calvites1990/OF4D-GM:OF4D-GM_main");
+
+// Configure and run the GediMapper
+var GEDI = library.GediMapper(
+  aoi,            // Area Of Interest (AOI)
+  2019,           // YYYY  — year
+  '03-01',        // MM-DD — start of satellite-image date range
+  '08-31',        // MM-DD — end of satellite-image date range
+  '2019-01-01',   // YYYY-MM-DD — start of GEDI collection
+  '2020-12-31',   // YYYY-MM-DD — end of GEDI collection
+  70,             // cloud coverage percentage (e.g. 70)
+  null,           // quantile (not required for these metrics)
+  'RF',           // model type: 'RF' (Random Forest)
+  'none',         // legacy mask argument — keep 'none'
+  'singleGEDI',   // metric: 'singleGEDI' | 'meanGEDI' | 'pai' | 'fhd_normal' | 'cover' | 'agbd'
+  'None',         // forest mask source: 'None' | 'DynamicWorld'
+  '2019-01-01',   // Dynamic World start  (used only if 'DynamicWorld')
+  '2020-01-01',   // Dynamic World end    (used only if 'DynamicWorld')
+  true,           // trees only           (used only if 'DynamicWorld')
+  200,            // number of trees in Random Forest (numTreesRF)
+  'NULL','NULL','NULL','NULL',         // RF extra params — unused
+  'NULL','NULL','NULL','NULL','NULL',  // GBM params — unused
+  'NULL','NULL'                        // CART params — unused
+);
+
+// Zoom to the AOI
+Map.centerObject(aoi, 10);
+```
+
+### Step 2 — Export the generated map to Google Drive
+
+```javascript
+var Map_out = ee.Image(ee.List(GEDI).get(0));   // GediMapper returns [classifiedImage]
+
+Export.image.toDrive({
+  image: Map_out,
+  description: 'OF4D_GEDI_metric',
+  folder: 'ee_drive',
+  region: aoi,
+  scale: 30,
+  maxPixels: 1e13,
+  crs: 'EPSG:4326'
+});
+```
+
+> **Notes**
+> - Change `calvites1990` in the `require` path to your own username if you cloned the repository.
+> - `Export.image.toDrive` runs as a background task with no size cap, so it is the recommended route for large areas. The 32 MB limit only applies to direct download URLs (`getDownloadURL`).
 
 ## Using the app
 
