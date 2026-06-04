@@ -7,6 +7,10 @@ The tool lets users pick an area of interest, choose a forest structural metric,
 🌍 **Live app:** https://ee-calvites1990.projects.earthengine.app/view/gedi-foreststructuremaps
 
 📖 **User guide:** https://openforest4d.org/gee_gedi_forest_structure_maps/
+---
+## User Interface
+
+<img width="1774" height="886" alt="Image" src="https://github.com/user-attachments/assets/965272a2-c2f7-4e42-95a8-b561b0e16347" />
 
 ---
 
