@@ -24,8 +24,7 @@ The app can map any one of the following GEDI-derived metrics:
 
 | Metric | Description | Unit |
 |--------|-------------|------|
-| Top-of-Canopy Height | Relative height of the canopy top | m |
-| Maximum Canopy Height | Maximum canopy height | m |
+| Top-of-Canopy Height | Relative height of the canopy top 98th percentile| m |
 | Plant Area Index (PAI) | Total one-sided plant area per unit ground area | m²/m² |
 | Foliage Height Diversity (FHD) | Vertical heterogeneity of plant material | unitless |
 | Canopy Cover | Fraction of ground covered by canopy | 0–1 |
