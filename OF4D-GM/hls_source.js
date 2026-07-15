@@ -1,8 +1,8 @@
-//***********************************************************************************************
-//****************************************** HLS   **********************************************
-//***********************************************************************************************
+//-------------------------------------------------------------------------
+// Harmonized Landsat and Sentinel-2 (HLS) in Google Earth Engine
+//-------------------------------------------------------------------------
 
-var calculateCompositeClipHLS = function(year, startDate, endDate, cloudsTh, MaxCloudsProbability, mask_raster, geometry, hlsType) {
+var calculateCompositeClipHLS = function(year, startDate, endDate, cloudsTh, mask_raster, geometry, hlsType) {
   hlsType = hlsType || 'L30'; // default
 
   var startDateWithYear = year + "-" + startDate;  // e.g., "2019-06-01"
@@ -36,7 +36,7 @@ var calculateCompositeClipHLS = function(year, startDate, endDate, cloudsTh, Max
 
   // ---- edge mask + optional external raster mask ----
   var maskEdges = function(img) {
-    // Use a NIR band’s native mask for validity:
+    // Use a NIR band's native mask for validity:
     // L30: B5 (NIR). S30: B8A (NIR-narrow). If BOTH, try both with fallback.
     var nirMask =
       ee.Algorithms.If(
@@ -59,4 +59,3 @@ var calculateCompositeClipHLS = function(year, startDate, endDate, cloudsTh, Max
   return composite;
 };
 exports.calculateCompositeClipHLS = calculateCompositeClipHLS;
-
