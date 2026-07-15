@@ -1,8 +1,8 @@
-//***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
 //********************************************* GEDI Mapper  *******************************************
-//***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
 
-// floating chart panels — tracked so they don't stack on re-run
+// floating chart panels - tracked so they don't stack on re-run
 var _floatPanels = [];
 function _clearFloatPanels() {
   _floatPanels.forEach(function(p){ try { Map.remove(p); } catch(e){} });
@@ -11,63 +11,72 @@ function _clearFloatPanels() {
 
 var GediMapper = function(
   aoi, year, start_date, end_date, startDateGEDI, endDateGEDI, cloudsTh, quantile,
-  model, mask, gedi_type,
-
+  model, gedi_type,
   // ===== NEW INPUTS =====
-  forestMaskSource,     // 'None' | 'WorldCover' | 'DynamicWorld'
+  forestMaskSource,     // 'None' | 'DynamicWorld'
   dwStart,              // e.g. '2019-01-01'
   dwEnd,                // e.g. '2020-01-01'
   treesOnly,            // true/false
-
-  // old params
-  numTreesRF, varSplitRF, minLeafPopuRF, bagFracRF, maxNodesRF,
-  numTreesGBM, shrGBM, samLingRateGBM, maxNodesGBM, lossGBM, maxNodesCART, minLeafPopCART
+  numTreesRF,
+  onModelReady,
+  onReady
 ){
 
-  //***************************************************************************************************************
-  //  Input Data
-  //***************************************************************************************************************
-
+//-----------------------------------------------------------------------------------------------------
+//  Input Data  
+//-----------------------------------------------------------------------------------------------------
   var startDateWithYear = year + "-" + start_date;
   var endDateWithYear   = year + "-" + end_date;
 
-  //***************************************************************************************************************
-  //  Importing Area of Interest (AOI)
-  //***************************************************************************************************************
-
+//-----------------------------------------------------------------------------------------------------
+//  Importing Area of Interest (AOI)
+//-----------------------------------------------------------------------------------------------------
   var aoi2 = ee.Geometry(ee.FeatureCollection(aoi).geometry());
   var polygonArea = aoi2.area({'maxError': 1});
   polygonArea = (polygonArea.divide(10000).round()).getInfo();   // hectares approx
-  //***************************************************************************************************************
-  //  Adjusting Visualization Settings for the AOI
-  //***************************************************************************************************************
 
+  // Guard: a degenerate/empty AOI (e.g. captured from a drawing-tools layer
+  // that wasn't set up correctly — see drawCustomAoi()/removeLayers() in
+  // OF4D-GM_UI.js) silently produces ~0 valid GEDI training samples several
+  // steps downstream, surfacing there as a generic "no valid training data"
+  // error with no indication that the actual problem is the AOI itself.
+  // Catch it here instead, where the cause is unambiguous.
+  if (!(polygonArea > 0)) {
+    throw new Error(
+      'The drawn area of interest appears to be empty or invalid (0 ha). ' +
+      'This usually means the polygon wasn\'t captured correctly — try ' +
+      'clicking "Reset study area", redrawing the polygon, and running again.'
+    );
+  }
+ 
+ //-----------------------------------------------------------------------------------------------------
+ //  Adjusting Visualization Settings for the AOI
+ //-----------------------------------------------------------------------------------------------------
+ 
   var scale;
-  if(polygonArea < 2000 ){var scale = 10
-  Map.centerObject(aoi, 14)}
-  else if(polygonArea >= 2000 & polygonArea < 10000){
-    scale = 50
-    Map.centerObject(aoi, 12)}
-  else if(polygonArea >= 10000 & polygonArea < 20000){
-    scale = 100
-    Map.centerObject(aoi, 10)}
-  else if(polygonArea >= 10000 & polygonArea < 330000){
-    scale = 100
+  if (polygonArea < 2000) {
+    scale = 10;
+    Map.centerObject(aoi, 14);
+  } else if (polygonArea >= 2000 && polygonArea < 10000) {
+    scale = 50;
+    Map.centerObject(aoi, 12);
+  } else if (polygonArea >= 10000 && polygonArea < 330000) {
+    scale = 100;
     Map.centerObject(aoi, 8);
-  }else if(polygonArea >= 330000 & polygonArea < 2200000){ 
-    scale = 200
+  } else if (polygonArea >= 330000 && polygonArea < 2200000) {
+    scale = 200;
     Map.centerObject(aoi, 8);
-  }else if(polygonArea >= 2200000 & polygonArea < 10000000){ 
-    scale = 250
+  } else if (polygonArea >= 2200000 && polygonArea < 10000000) {
+    scale = 250;
     Map.centerObject(aoi, 8);
-  }else {scale = 250
-  Map.centerObject(aoi, 6);}
+  } else {
+    scale = 250;
+    Map.centerObject(aoi, 6);
+  }
   
-
-  //***************************************************************************************************************
-  //  FOREST MASK (None | WorldCover | DynamicWorld)
-  //***************************************************************************************************************
-
+//-----------------------------------------------------------------------------------------------------
+//  FOREST MASK (None | WorldCover | DynamicWorld)
+//-----------------------------------------------------------------------------------------------------
   var ForestMasking = function(for_aoi, year, forestMaskSource, dwStart, dwEnd, treesOnly) {
     var fnf = ee.Image.constant(1).toByte().clip(for_aoi).selfMask().rename('FNF');
     if (forestMaskSource === 'None') return fnf;
@@ -89,9 +98,9 @@ var GediMapper = function(
     return fnf;
   };
   var FNF = ForestMasking(aoi2, year, forestMaskSource, dwStart, dwEnd, treesOnly);
-  //***************************************************************************************************************
-  //  GEDI data
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  GEDI data
+//-----------------------------------------------------------------------------------------------------
 
   var dataset  = ee.ImageCollection("LARSE/GEDI/GEDI02_A_002_MONTHLY");
   var library2 = require("users/calvites1990/OF4D-GM:GEDI_source");
@@ -108,17 +117,17 @@ var GediMapper = function(
     'nighttime'     // shoot_time_type
   );
 
-  //***************************************************************************************************************
-  //  HLS / S2 composite
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  HLS / S2 composite
+//-----------------------------------------------------------------------------------------------------
 
   var library5 = require("users/calvites1990/OF4D-GM:hls_source");
-  var s2_raw = library5.calculateCompositeClipHLS(year, start_date, end_date, cloudsTh, 20, FNF, aoi2, 'S30');
+  var s2_raw = library5.calculateCompositeClipHLS(year, start_date, end_date, cloudsTh, FNF, aoi2, 'S30');
   var s2 = s2_raw.select(['B1','B2','B3','B4','B5','B6','B7','B8','B8A','B9','B10','B11','B12']);
 
-  //***************************************************************************************************************
-  //  DEM + terrain
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  DEM + terrain
+//-----------------------------------------------------------------------------------------------------
 
   var dem = ee.Image('NASA/NASADEM_HGT/001').select('elevation').rename('elev');
   var hlsProj = s2.select('B2').projection();
@@ -126,9 +135,9 @@ var GediMapper = function(
   var slope  = ee.Terrain.slope(dem).rename('slope');
   var aspect = ee.Terrain.aspect(dem).rename('aspect');
 
-  //***************************************************************************************************************
-  //  Dataset merge
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  Dataset merge
+//-----------------------------------------------------------------------------------------------------
 
   var latlon = ee.Image.pixelLonLat().select(['longitude', 'latitude']);
 
@@ -139,9 +148,9 @@ var GediMapper = function(
     .addBands(aspect)
     .addBands(latlon);
 
-  //***************************************************************************************************************
-  //  Random sampling in large areas
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  Random sampling in large areas
+//-----------------------------------------------------------------------------------------------------
 
   var cellSize;
   if (scale === 100) {
@@ -165,9 +174,9 @@ var GediMapper = function(
   var aoi_buffer = generatedPoints.buffer;
   var aoi_prova = aoi_buffer.geometry();
 
-  //***************************************************************************************************************
-  //  Sampling configuration
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  Sampling configuration
+//-----------------------------------------------------------------------------------------------------
 
 var reference;
 if (polygonArea <= 4000) {
@@ -191,24 +200,54 @@ if (polygonArea <= 4000) {
     geometries: true
   });
 }
- 
-  //***************************************************************************************************************
-  //  Split train/validation
-  //***************************************************************************************************************
+
+//-----------------------------------------------------------------------------------------------------
+//  Split train/validation
+//-----------------------------------------------------------------------------------------------------
 
   reference = reference.randomColumn('random');
   var split = 0.7;
   var training   = reference.filter(ee.Filter.lt('random', split));
   var validation = reference.filter(ee.Filter.gte('random', split));
 
+//-----------------------------------------------------------------------------------------------------
+//  Guard: make sure sampling actually produced valid training data
+//-----------------------------------------------------------------------------------------------------
+
+  ee.Dictionary({training: training.size(), validation: validation.size()})
+    .evaluate(function(counts, countErr) {
+
+    if (countErr) {
+      onModelReady(new Error('Failed to check GEDI sample counts: ' + countErr));
+      return;
+    }
+    if (counts.training === 0) {
+      onModelReady(new Error(
+        'No valid training data were found: no GEDI footprints survived the ' +
+        'current filters (minimum sensitivity 0.9, full-power beams only, ' +
+        'nighttime only) inside this area of interest and GEDI date range. ' +
+        'Try widening the GEDI date range, drawing a larger area, or ' +
+        'confirming GEDI has nighttime full-power coverage there.'
+      ));
+      return;
+    }
+    if (counts.validation === 0) {
+      onModelReady(new Error(
+        'Only ' + counts.training + ' GEDI training point(s) were found, and ' +
+        'none landed in the validation split — there is not enough GEDI data ' +
+        'in this area/time range to both train and validate the model. Try a ' +
+        'larger area or a wider GEDI date range.'
+      ));
+      return;
+    }
+
   // ===== FIX 1: predictors WITHOUT the GEDI bands (no target leakage) =====
   var gediBands       = gedi.bandNames();                       // rh + any other GEDI metrics
   var predictorsNames = merged.bandNames().removeAll(gediBands);
 
-  //***************************************************************************************************************
-  //  Train model (RF)
-  //***************************************************************************************************************
-
+//-----------------------------------------------------------------------------------------------------
+//  Train model (RF)
+//-----------------------------------------------------------------------------------------------------
   var classifier;
   if (model === "RF") {
     classifier = ee.Classifier.smileRandomForest({
@@ -218,18 +257,15 @@ if (polygonArea <= 4000) {
     .train(training, "rh", predictorsNames);
   }
 
-  //***************************************************************************************************************
-  //  Predict
-  //***************************************************************************************************************
-
+//-----------------------------------------------------------------------------------------------------
+//  Predict
+//-----------------------------------------------------------------------------------------------------
   var classified = merged.classify(classifier);
   classified = classified.updateMask(FNF);   // output masked to forest
 
-  //***************************************************************************************************************
-  //  Plots + variable importance
-  //***************************************************************************************************************
-
-  //var library4 = require("users/calvites1990/OF4D-GM:ForPlots");
+//-----------------------------------------------------------------------------------------------------
+//  Plots + variable importance
+//-----------------------------------------------------------------------------------------------------
   var trained   = training.classify(classifier);
   var validated = validation.classify(classifier);
 
@@ -292,10 +328,10 @@ if (polygonArea <= 4000) {
   Map.add(scatterRow);
   _floatPanels.push(scatterRow);
 
-  //***************************************************************************************************************
-  //  Model Performance — ONE computation feeds BOTH the on-screen window AND the CSV download
-  //  (this guarantees the window and the downloaded table always show identical numbers)
-  //***************************************************************************************************************
+//-----------------------------------------------------------------------------------------------------
+//  Model Performance - ONE computation feeds BOTH the on-screen window AND the CSV download
+//  (this guarantees the window and the downloaded table always show identical numbers)
+//-----------------------------------------------------------------------------------------------------
 
   var _statsOf = function(fc) {
     fc = fc.filter(ee.Filter.notNull(['rh','classification']));
@@ -349,9 +385,26 @@ if (polygonArea <= 4000) {
   Map.add(metricsDownloadPanel);
   _floatPanels.push(metricsDownloadPanel);
 
-  // ONE evaluation -> fill the window AND build the CSV from the SAME numbers
+//-----------------------------------------------------------------------------------------------------
+//  Async completion tracking
+//  Two independent chains need to settle before we're really "done":
+//    1) bothStats.evaluate(...) -> csvFC.getDownloadURL(...)
+//    2) classified.getDownloadURL(...)
+//-----------------------------------------------------------------------------------------------------
+
+  var _pendingAsync = 2;
+  var _asyncErr = null;
+  function _asyncDone(err) {
+    if (err && !_asyncErr) { _asyncErr = err; }
+    _pendingAsync -= 1;
+    if (_pendingAsync <= 0 && typeof onReady === 'function') {
+      onReady(_asyncErr);
+    }
+  }
+
+  // Evaluation -> fill the window AND build the CSV from the SAME numbers
   bothStats.evaluate(function(res, err){
-    if (err || !res) { metricsDownloadLabel.setValue('metrics error: ' + err); return; }
+    if (err || !res) { metricsDownloadLabel.setValue('metrics error: ' + err); _asyncDone(err || 'metrics evaluation failed'); return; }
     var tr = res.train, te = res.test;
 
     function pct(v, p){ return Number(v).toFixed(2) + ' (' + Number(p).toFixed(1) + '%)'; }
@@ -391,34 +444,63 @@ if (polygonArea <= 4000) {
 
     csvFC.getDownloadURL('CSV', ['Stats','Train','Test'], 'OF4D_model_performance',
       function(url, e2){
-        if (e2 || !url) { metricsDownloadLabel.setValue('metrics download error'); return; }
+        if (e2 || !url) { metricsDownloadLabel.setValue('metrics download error'); _asyncDone(e2 || 'metrics download failed'); return; }
         metricsDownloadLabel.setValue('Download Model Performance (CSV)');
         metricsDownloadLabel.setUrl(url);
+        _asyncDone(null);
       });
   });
 
-  //***************************************************************************************************************
-  //  Visualization scaling
-  //***************************************************************************************************************
+  // ---- Direct browser download link for the generated map (same pattern as the CSV link above) ----
+  // NOTE: this goes through ee.Image.getDownloadURL, which - like any direct Earth Engine
+  // download link - caps out at 32MB per file. For AOIs too large to fit that limit at
+  // the chosen 'scale', the request below will come back with an error; the label just
+  // reports that rather than silently failing. 
+  var mapDownloadLabel = ui.Label('preparing map download...', {
+    color: 'blue', textDecoration: 'underline', padding: '2px'
+  });
+  var mapDownloadPanel = ui.Panel({
+    widgets: [mapDownloadLabel],
+    style: {position: 'top-right', padding: '2px',
+            backgroundColor: 'rgba(255,255,255,0.90)', border: '1px solid black'}
+  });
+  Map.add(mapDownloadPanel);
+  _floatPanels.push(mapDownloadPanel);
 
-  var max;
-  if (gedi_type === 'singleGEDI') {
-    max = 40;  libraryRS.scalecolor(0, max, classified);
-  } else if (gedi_type === 'meanGEDI') {
-    max = 40;  libraryRS.scalecolor(0, max, classified);
-  } else if (gedi_type === 'pai') {
-    max = 3;   libraryRS.scalecolor(0, max, classified);
-  } else if (gedi_type === 'fhd_normal') {
-    max = 2;   libraryRS.scalecolor(0, max, classified);
-  } else if (gedi_type === 'cover') {
-    max = 1;   libraryRS.scalecolor(0, max, classified);
-  } else if (gedi_type === 'agbd') {
-    max = 300; libraryRS.scalecolor(0, max, classified);
+  classified.getDownloadURL({
+    name: 'OF4D_' + gedi_type,
+    scale: scale,
+    region: aoi2,
+    crs: 'EPSG:4326',
+    format: 'GEO_TIFF'
+  }, function(url, err){
+    if (err || !url) {
+      mapDownloadLabel.setValue('map too large to download directly — use Drive export instead');
+      _asyncDone(null); // not a run-level error — already reported via the label above
+      return;
+    }
+    mapDownloadLabel.setValue('Download Map (GeoTIFF)');
+    mapDownloadLabel.setUrl(url);
+    _asyncDone(null);
+  });
+
+  //-----------------------------------------------------------------------------------------------------
+  //  Visualization scaling
+  //-----------------------------------------------------------------------------------------------------
+
+  var maxByGediType = {
+    singleGEDI: 40, meanGEDI: 40, pai: 3, fhd_normal: 2, cover: 1, agbd: 300
+  };
+  var max = maxByGediType[gedi_type];
+  if (max !== undefined) {
+    var legendPanel = libraryRS.scalecolor(0, max, classified);
+    if (legendPanel) { _floatPanels.push(legendPanel); }
   }
 
-  return [classified];
+  onModelReady(null, classified);
+  }); // end ee.Dictionary({training, validation}).evaluate(...)
 };
 
 exports.GediMapper = GediMapper;
 
-//***************************************************** End *****************************************************
+exports.clearFloatPanels = _clearFloatPanels;
